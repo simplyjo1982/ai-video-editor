@@ -1,13 +1,14 @@
 # DATA_MODEL.md
 
-**Status:** Planning revised to approved MVP decisions; implementation not started  
-**Version:** 0.2
+**Status:** Phase 0A–0D completed; version 0.3 planning revision only; Phase 0E not started
+
+**Version:** 0.3
 
 ## 1. Shared conventions
 
 - Entity identifiers: UUIDs.
 - Application timestamps: UTC.
-- Media timestamps: integer milliseconds on the normalized working video.
+- Original technical facts: exact integer PTS plus rational stream timebase and explicit origin. Published downstream intervals: integer working-frame indexes at 30 fps, with integer milliseconds only for display/provider interchange; every provisional interval names its coordinate system.
 - Render timeline: integer frames at 30 fps.
 - Time intervals: inclusive start, exclusive end.
 - Stored artifact references: backend, logical namespace, and object key; local paths resolve under a configured root and cloud namespaces map to buckets. Never persist signed URLs or machine-specific absolute paths as artifact identity.
@@ -18,42 +19,72 @@
 - Project limits and sampling/cost/resource policies are versioned configuration values, not hard-coded database limits. EDL v1 retains its fixed 30 fps timing contract.
 - Search uses metadata, tags, transcript, and keyword indexes only; no embeddings/vector fields. PostgreSQL jobs require no Redis/BullMQ data structures. FFmpeg is the only required Phase 0/1 renderer; Remotion is deferred beyond Phase 1.
 
-## 2. Core entities
+## 2. Existing schema and staged additions
 
-| Entity | Main fields and purpose |
-|---|---|
-| `projects` | Local/authenticated owner context, name, brief, language preferences, target duration, active EDL, policy version, deletion state |
-| `policy_versions` | Validated project limits, sampling settings, spending ceilings, concurrency/retry/timeouts, storage/cleanup policies; immutable configuration snapshots |
-| `upload_reservations` | Project, intake idempotency key, artifact key, reserved slots/bytes, actual bytes/duration, expiry, finalization state, policy version |
-| `assets` | Project, original filename, checksum, upload state, original artifact, active analysis revision |
-| `media_metadata` | Asset, original/working artifact IDs, duration/frame count, codecs, dimensions, rotation, audio offsets, stream timebases and start PTS, normalization profile/version, timing-map artifact |
-| `artifacts` | Project, asset/job linkage, original/working/temporary/export class, backend/namespace/key, checksum, size, status, profile version, producing attempt, retention/reference information |
-| `analysis_runs` | Asset, immutable input hashes, pipeline/model/prompt/schema versions, sampling policy, stage cache keys/results, coverage, errors, rerun reason |
-| `scenes` | Analysis run, source start/end, detector confidence, boundary type |
-| `segments` | Analysis run, scene, source range, summary, tags, search text |
-| `frames` | Analysis run, segment, source timestamp, image artifact, sampling reason |
-| `transcript_segments` | Analysis run, source range, text, language, optional provider confidence |
-| `transcript_words` | Transcript segment, word, source start/end; optional where supported |
-| `visual_observations` | Segment, description, uncertainty, supporting frame IDs |
-| `quality_scores` | Segment, component scores, overall score, warnings, scoring version |
-| `storyboard_sets` | Project, brief snapshot, analysis snapshot, status |
-| `storyboards` | Set, option index 1–3, title, angle, hook, estimated duration |
-| `storyboard_beats` | Storyboard, order, narrative purpose, source references, rationale |
-| `edl_versions` | Project, unique version number, parent version, storyboard, schema version, immutable EDL JSON, document hash, render-content hash |
-| `edit_requests` | Project, base EDL, instruction, proposal, status, resulting EDL |
-| `renders` | EDL, output profile, renderer version, status, artifact, validation results |
-| `jobs` | Type, target, dependencies, state, pause reason/resume requirements, checkpoint, lease token/expiry/heartbeat, attempt/max attempts, retry time, idempotency key, policy version, progress/error, linked retry job |
-| `cost_reservations` | Project/job/stage/attempt, estimated amount, provider/pricing version, reserved/reconciled/uncertain/released status, actual usage linkage |
-| `usage_events` | Project/job, provider, model, usage quantities, estimated cost |
+**Product:** AI Creative Director + AI Video Editor. This is a design contract, not a request to create every future table.
 
-Provider confidence is nullable. Do not invent numerical confidence when none is available.
+The implemented migrations are `packages/db/migrations/0001_phase_0b.sql`, `0002_project_status.sql` and `0003_upload_reservations.sql`. They provide `projects`, `media_assets`, `jobs`, `analysis_runs` and `upload_reservations` (plus migration bookkeeping). Use the existing name `media_assets`, not a new parallel `assets` table. Preserve applied migrations and current rows.
+
+### Minimum additive schema plan for Phase 0E
+
+Create these changes only when Phase 0E implementation is separately authorized. No migration is created/applied in this revision.
+
+| Structure | Minimum justified fields / change | Why needed in 0E |
+|---|---|---|
+| Existing `media_assets` | Preserve filename, logical original path, size and nullable duration/dimensions/codec; add verified original checksum and technical-analysis pointer/status as needed; record admitted duration and policy snapshot atomically | Stable source identity, compatibility and concurrent duration admission; legacy fields are convenience projections, not competing technical truth |
+| Existing `analysis_runs` | Retain project/asset/type/revision/model/prompt/schema/hash/cache fields; add toolchain/configuration snapshot, upstream run/artifact references, completion/error/coverage summary and linked job as needed | Separate immutable successful results for probe, normalization, temporal segmentation and representative frames; model/prompt fields remain null for deterministic runs |
+| `artifacts` | UUID, project/asset, producing run/job, class, backend/namespace/key, SHA-256, bytes, media type, profile/version, state, created time | Verified immutable original references and working videos, timing maps and representative images; attempt-local temp files need no permanent artifact row |
+| `media_metadata` | UUID, project/asset/run, original artifact and optional working/map artifact references, schema version, canonical technical fields, bounded raw probe evidence, derivation/warnings | Preserve original facts separately from derived working properties and allow future reprocessing without overwriting history |
+| `temporal_segments` | UUID, project/asset/run, working artifact, optional same-asset parent, kind, start/end frames, detector/method version, nullable confidence, boundary reason | One table for shot/editorial intervals in 0E and later justified scene grouping; avoid separate scenes/shots tables now |
+| `representative_frames` | UUID, project/asset/run/segment, image artifact, working frame index, mapped original PTS/timebase, extraction policy and reason | Persistent representative samples with verifiable evidence coordinates for later visual/semantic layers |
+| Existing `jobs` | Reuse states, attempts, lock/lease/heartbeat, idempotency and pause fields; add checkpoint, dependency/target-run linkage and policy snapshot only for technical handlers | Durable technical stages with atomic claiming, bounded retries, lease-safe publication, pause/resume and cancellation |
+
+Canonical technical fields include: original/container and selected-stream duration with derivation; coded/display width and height; sample/display aspect ratio; rotation/orientation; codec/profile; rational nominal/average frame rate; CFR/VFR/unknown plus inspection method/coverage; audio stream indexes/codecs/channels/sample rates/start PTS/timebases; selected stream indexes; normalization profile/version/status; working duration/frame count/dimensions; shared A/V origin and offsets; and timing-map artifact/schema. Large per-frame PTS maps belong in checksummed working artifacts, not unbounded database JSON. Do not derive exact frame count from rounded duration.
+
+A bounded versioned JSON payload is acceptable for heterogeneous stream inventories/probe evidence; query-critical identity, status and timing fields remain typed. Validate JSON on write. Inconclusive stream facts remain null/unknown with reasons, never synthetic values.
+
+Preserve original upload storage identity when adding an artifact reference; backfill existing uploads safely, using existing reservation checksums or a verified checksum read. Do not move originals or rewrite 0001–0003. Create no new `policy_versions` table in 0E: reuse immutable versioned snapshots, as uploads already do.
+
+Use foreign keys and unique composite keys to enforce same-project/asset/run/artifact references. Add indexes for project/asset/run lookups, segment temporal ordering, representative-frame lookup and stage cache lookup. Enforce positive denominators/dimensions where known, valid states, `0 <= start_frame < end_frame <= working_frame_count`, sample-in-segment bounds and confidence range. Cross-row bounds need transaction-level/application semantic validation as well as available database constraints. Parent intervals must contain children and parent links cannot cycle.
+
+Make ordinary stage submission idempotent with a project/asset/stage/input/configuration key; do not forbid explicit new revisions with the same content. Publication uses a current lease and verified artifacts. Pending/failed partial results are never exposed as completed facts. Duration admission is serialized per project and counted once per asset, independent of re-analysis; compatibility rejection releases admitted capacity according to retention rules without pretending disk bytes have already disappeared.
+
+### Later structures, not Phase 0E migrations
+
+| Earliest phase | Planned logical structures | Scope |
+|---|---|---|
+| 0F | Transcript units/optional words, quote evidence, optional speaker labels | Timestamped Thai/English/mixed speech, sentence/semantic segmentation, context and timing |
+| 0F before paid calls | Cost reservations and usage events | Atomic budget admission/reconciliation including uncertain requests; no paid gate in 0E |
+| 0G | Visual observations | Frame/interval evidence, observed entities/actions/text/changes, uncertainty and coverage |
+| 0H | Semantic role assignments | Versioned controlled taxonomy, multi-label confidence and evidence; taxonomy can be a versioned contract, not a database table |
+| 0I | Quality assessments, take groups and members/rankings | Explainable component scores and non-destructive similarity proposals |
+| 0J | Footage Library queries/indexes | Reuse existing evidence tables; no obligatory extra knowledge-base table or vector store |
+| Phase 1 | Creative brief snapshots, storyboard sets/options/beats, EDL versions, renders | Contextual selection and immutable grounded story/render lineage |
+| Phase 2 | Edit requests and caption/version extensions | Supported natural-language changes and subtitles |
+| Deployment | Auth/ownership mapping, RLS and cloud-retention structures if needed | No Phase 0E auth, billing or production-only schema |
+
+### Future semantic / editorial contracts
+
+The controlled taxonomy is: HOOK, PROBLEM, CONTEXT, EXPERT_AUTHORITY, SOLUTION, DEMO, B_ROLL, PROOF, TESTIMONIAL, OBJECTION_HANDLER, OFFER, CTA, PAYOFF, TRANSITION, DISCLAIMER, LOW_VALUE.
+
+A semantic assignment identifies project, asset, immutable segment/analysis revision, role, optional subtype, independent confidence in [0,1], evidence IDs and source intervals, rationale, limitations, taxonomy/schema/model/prompt versions and assessment status. Multiple roles may coexist; confidences do not sum to one. Insufficient evidence permits abstention; LOW_VALUE needs an explicit usability/editorial reason. Example: `{HOOK: 0.93, PROBLEM: 0.86, EXPERT_AUTHORITY: 0.52}` represents three assignments, not a mutually exclusive classification.
+
+HOOK subtypes: question, problem, contrarian, result, price, curiosity, authority, transformation, fear_loss, social_proof, visual. CTA subtypes: hard_cta, soft_cta, offer_cta, urgency_cta, informational_cta, lead_cta. Validate subtypes under their parent role and taxonomy version; unknown extensions require explicit version handling, not arbitrary silent labels.
+
+Quality components: visual quality, sharpness, stability, composition, face visibility, audio quality, delivery quality, emotional impact, story relevance, hook strength, CTA strength, conversion potential, editorial usefulness. Store nullable 0–100 score, applicability, rationale, evidence, measurement/rubric version and uncertainty per component. Confidence and quality score are different quantities. Optional aggregates record weights and missing-component handling; no universal score determines truth or automatically discards footage.
+
+Future take groups identify member intervals, evidence of similarity and per-member rank/rationale based on transcript similarity, delivery, visual/audio quality, completeness and editorial usefulness. Preserve all member references and allow rejection/override. No embeddings/vector fields or destructive deduplication.
+
+Phase 1 brief snapshots contain objective (Meta Lead Ad, Conversion / Sales, Awareness, Educational, Organic Social, Testimonial, Personal Brand, extensible), audience, message, desired action, duration and constraints. Contextual relevance/rankings reference the brief hash plus source-evidence snapshot. Keep them separate from reusable base observations/roles. Do not rerun source analysis for a new brief. Three complete options belong to a storyboard set; selected beats cite real intervals, semantic/quality evidence and rationale. EDL/render/edit contracts below remain unchanged except richer provenance.
+
+Provider-reported confidence is nullable; do not invent it when absent. A model-estimated semantic confidence is separately labeled as an estimate with method/version, never presented as provider probability or measured certainty.
 
 Originals, working media, temporary files, and final exports have separate accounting. Durable stage results identify immutable artifacts and must not depend on disposable temp paths. Storage migration verifies content hashes and changes location metadata without altering source timing/content identity or historical EDLs.
 
 ### Reservation integrity
 
 - Reserve file slots/bytes transactionally against accepted usage plus live reservations; enforce a project-scoped unique intake idempotency key.
-- Reservation states: `reserved`, `uploading`, `uploaded`, `accepted`, `rejected`, `expired`, `cancelled`. Transfer completion alone is not media acceptance.
+- Existing 0D reservation states are `reserved`, `uploading`, `uploaded`, `rejected`, `expired`; do not retroactively claim `accepted` or `cancelled` exists. Transfer completion is not technical acceptance. Record technical acceptance/rejection on media analysis/asset state; add a cancellation state only when its workflow is implemented.
 - Record configurable expiry/renewal; retries reuse the same reservation/object. Finalization verifies checksum/size and accounts bytes exactly once. Post-probe duration admission is atomic before expensive analysis.
 - Rejection, cancellation, or expiry releases capacity once and queues incomplete/rejected media cleanup. Keep pending-deletion disk usage visible until actual removal.
 - Cost admission is atomic against spent plus outstanding/uncertain reservations. Resume/retry checks the current operator ceiling; historical job policy snapshots remain unchanged. Unknown cost cannot silently bypass the guardrail.
@@ -61,8 +92,8 @@ Originals, working media, temporary files, and final exports have separate accou
 ## 3. Relationships and integrity
 
 - Project → many assets.
-- Asset → many analysis revisions; one active revision.
-- Analysis revision → scenes, segments, frames, transcripts, observations, scores.
+- Asset → many analysis revisions; current successful revision per stage, rather than a single global revision that would invalidate unrelated layers.
+- Technical analysis revision → metadata, artifacts, temporal segments and representative frames; later stage revisions link to those immutable inputs and add transcripts, observations, semantic roles, scores and take groups.
 - Storyboard set → exactly three options when marked complete.
 - Storyboard beat → one or more grounded source references.
 - Project → many immutable EDL versions.
@@ -88,7 +119,7 @@ The stored EDL JSON is the **rendering source of truth**.
 | Section | Required contents |
 |---|---|
 | Identity | Schema version, project ID, EDL version, parent version |
-| Provenance | Selected storyboard, analysis revisions, creation reason |
+| Provenance | Creative brief and selected storyboard, frozen evidence/analysis revisions, source selection rationale, creation reason |
 | Output | Phase 1: 1080 × 1920 (9:16), 30 fps, total frame count; Phase 2 adds 1080 × 1080 and 1920 × 1080 |
 | Clips | Ordered clip IDs, asset IDs, working artifact IDs, source ranges, timeline ranges |
 | Framing | Phase 1 centered safe fit/black padding preserving proportions; Phase 2 optional saved normalized crop rectangle |
@@ -175,9 +206,9 @@ Asset states:
 
 `uploading`, `uploaded`, `validating`, `analyzing`, `ready`, `partial`, `failed`, `rejected`.
 
-A `partial` asset remains inspectable. It becomes story-eligible only when mandatory visual/timing analysis is complete and any missing speech transcription is explicitly excluded by the user.
+A `partial` asset remains inspectable. Technical-stage completion in 0E is not full editorial readiness; expose stage status separately from aggregate asset status. Story eligibility is evaluated in Phase 1 against its frozen evidence snapshot and brief, not inferred merely from a completed probe.
 
-Mandatory story eligibility means a verified working artifact and timing map, scene/segment intervals, valid representative-frame artifacts, and evidence-linked visual results for candidate intervals. Unsampled/unanalyzed intervals are not silently treated as understood. No-audio/no-speech is a completed valid outcome. Missing speech transcription requires a recorded user exclusion; failed quality components remain nullable with renormalized scores. Readiness is separate from its current job's pause/cancellation state.
+Mandatory story eligibility means a verified working artifact and timing map, temporal intervals, representative frames and evidence-linked visual/semantic assessments for selected intervals. Roles may be uncertain or absent; the Director must explain insufficient support instead of forcing a label. Unsampled intervals are not understood by default. No-audio/no-speech is valid; missing speech transcription requires recorded user exclusion from speech use. Quality components may be null; optional aggregates disclose normalization. Brief-specific confidence thresholds and selection rubrics are evaluated in Phase 1. Readiness is separate from job pause/cancellation state.
 
 Job states:
 

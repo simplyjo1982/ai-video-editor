@@ -1,19 +1,27 @@
 # PRD.md
 
-**Status:** Planning revised to approved MVP decisions; implementation not started  
-**Version:** 0.2  
-**Product:** AI-first Video Editor
+**Status:** Phase 0A–0D completed; version 0.3 planning revision only; Phase 0E not started
+
+**Version:** 0.3
+
+**Product:** AI Creative Director + AI Video Editor
 
 ## 1. Product objective
 
-Turn a collection of raw footage into a coherent, editable short video without requiring professional editing skills.
+Turn a collection of raw footage into a coherent, editable short video without requiring professional editing skills. The product is an AI Creative Director + AI Video Editor: it builds structured editorial understanding, then selects a story for a specific creative objective. Transcription and description are evidence layers, not the finished intelligence product.
+
+**Video intelligence pipeline:**
+
+Uploaded Media → Technical Media Intelligence → Temporal Segmentation → Transcript Intelligence → Visual Intelligence → Semantic Video Intelligence → Quality / Best-Take Intelligence → Footage Knowledge Base → Creative Director → Storyboard → EDL → Render.
+
+Phase 0A–0D already provide the local foundation, PostgreSQL, projects, and resumable uploads. This revision plans the next stages; it does not implement Phase 0E.
 
 The core experience:
 
 1. Upload multiple videos.
 2. Analyze the footage.
 3. Review what the system found.
-4. Generate three grounded storyboard options.
+4. Capture a creative brief and let the Creative Director propose three grounded story concepts, each expressed as a storyboard.
 5. Select a story.
 6. Create a structured Edit Decision List, or EDL.
 7. Render and preview an actual MP4.
@@ -67,7 +75,7 @@ These are configurable MVP defaults, not hard-coded architectural limits or clai
 | Total uploaded size | 5 GB per project |
 | Total footage duration | 30 minutes per project |
 | Individual video duration | 15 minutes |
-| Baseline inputs | SDR MP4/MOV containing H.264 video; AAC audio or no audio |
+| Baseline inputs | MP4/MOV/M4V upload containers; Phase 0E validates SDR H.264 video with AAC audio or no audio; upload acceptance alone does not prove codec compatibility |
 | Input dimensions | Up to 3840 × 2160, including portrait equivalents |
 | Input frame rates | Up to 60 fps; variable frame rate accepted through normalization |
 | Output duration | 15–90 seconds |
@@ -103,15 +111,15 @@ Uploaded-byte quotas do not include derivative storage implicitly: working media
 | ID | Requirement | Required behavior |
 |---|---|---|
 | F01 | Multiple uploads | Per-file progress, retry, resumable transfer, clear errors |
-| F02 | Metadata extraction | Duration, dimensions, codec, frame rate, rotation, audio presence |
-| F03 | Scene detection | Identify candidate shot boundaries; support one continuous scene |
+| F02 | Technical Media Intelligence | Duration, dimensions, rational frame rate, codecs, audio streams, orientation, CFR/VFR evidence, and timestamp normalization |
+| F03 | Temporal segmentation | Identify candidate shot boundaries and useful editorial intervals; support a continuous shot; semantic scenes later |
 | F04 | Audio extraction | Extract analysis audio while preserving synchronization information |
-| F05 | Transcription | Timestamped Thai/English transcript linked to source video |
+| F05 | Transcript Intelligence | Timestamped Thai/English/mixed speech, sentence/semantic units, useful quotes, optional justified speaker labels |
 | F06 | Frame extraction | Representative frames with exact source timestamps |
-| F07 | Visual analysis | Evidence-linked summaries, visible subjects/actions, uncertainty |
+| F07 | Visual Intelligence | Evidence-linked people, objects, setting, action, composition, shot type, visible text, demonstrations, before/after imagery, and temporal changes |
 | F08 | Search | Metadata, tags, transcript, description keywords; jump to matching footage; no embeddings or vector search in the MVP |
-| F09 | Quality scoring | Explainable technical suitability scores and warnings |
-| F10 | Storyboards | Exactly three distinct options when sufficient footage exists |
+| F09 | Quality / Best-Take Intelligence | Explainable technical/editorial assessments and similar-take candidates, with uncertainty and human override |
+| F10 | Creative Director and storyboards | Objective-conditioned selection; exactly three distinct grounded concepts/storyboards when sufficient footage exists |
 | F11 | Source selection | Every selected clip has a valid asset and source interval |
 | F12 | EDL | Validated, versioned, structured editing specification |
 | F13 | Rendering | Produce and verify a real downloadable MP4 |
@@ -120,40 +128,86 @@ Uploaded-byte quotas do not include derivative storage implicitly: working media
 | F16 | Subtitles | Editable transcript-derived captions, optional burn-in, SRT export |
 | F17 | Aspect ratios | Phase 1: 9:16; Phase 2: add 1:1 and 16:9; preserve source proportions with safe fit/padding |
 | F18 | Version history | Preserve previous edits and restore an earlier version |
+| F19 | Semantic Video Intelligence | Multiple evidence-linked roles per segment, independent confidence, versioned taxonomy, abstention for insufficient evidence |
+| F20 | Footage Knowledge Base | Persisted evidence, roles, quality, take groups, coverage, keyword/filter retrieval; no embeddings |
 
 ### Footage understanding
 
-The system analyzes every accepted asset, but must not imply that sampled frames provide exhaustive understanding of every moment.
+Process every accepted asset through applicable stages, but sampled frames never imply exhaustive understanding of every moment.
 
-Each asset displays:
+| Layer | Required understanding and provenance |
+|---|---|
+| Technical Media Intelligence (0E) | Duration, coded/display dimensions, rational frame rates, codec/profile, audio stream inventory, rotation/orientation, CFR/VFR/unknown with detection method, original timebases/start PTS, normalization status/profile and timing map |
+| Temporal Segmentation (0E foundation) | Candidate shot boundaries and useful editorial intervals, inclusive start/exclusive end, representative frames and exact source mappings; a continuous take is valid |
+| Transcript Intelligence (0F) | Timestamped speech, sentence/semantic units, Thai, English and mixed speech, useful quote candidates with context; speaker labels only where technically supported, never inferred identity |
+| Visual Intelligence (0G) | People, objects, setting, action, shot type, composition, visible text, before/after imagery, product/service demonstrations, observed changes across time; separate evidence from inference |
+| Semantic Video Intelligence (0H) | Multi-role editorial interpretation grounded in transcript/frame/interval evidence, confidence, rationale and coverage limitations |
+| Quality / Best-Take Intelligence (0I) | Explainable technical/editorial components; candidate repeated takes grouped and ranked without deleting or hiding alternatives |
+| Footage Knowledge Base / Footage Library (0J) | Inspectable evidence, revisions, roles, quotes, quality, take groups, keyword search/filtering and source playback |
 
-- Technical metadata.
-- Scene and segment cards.
-- Representative frames.
-- Timestamped transcript, or explicit no-audio/no-speech status.
-- Visual summary and searchable tags.
-- Quality breakdown.
-- Analysis status and limitations.
-- Links back to source playback.
+A shot is a visually continuous recording interval; a scene may group shots when supported. Phase 0E detects candidate shot boundaries only, not semantic scenes. Use explicit segment kinds (`shot`, `scene`, `editorial`) and parent links where justified. Do not force transcript units to align with shot cuts. All layers retain their coordinate system and source references. Unknown, unavailable, no-audio and no-speech are distinct from failed analysis.
 
-A **scene** represents a detected shot. A **segment** is a time interval used for search and editing; long scenes may contain several segments.
+### Semantic video roles
 
-### Footage quality scoring
+Use this versioned, extensible controlled taxonomy. Multiple roles can apply to an interval; independent confidence scores (0–1) need not sum to one and are not calibrated probabilities unless validated. Each assignment records evidence references, rationale, taxonomy/schema/model/prompt versions and limitations. Abstain when evidence is insufficient; missing evidence is not LOW_VALUE. Low-value or unusable judgments need reasons and never delete footage automatically.
 
-Technical suitability is separate from narrative relevance.
+| Role | Editorial purpose |
+|---|---|
+| HOOK | Earn attention at the opening |
+| PROBLEM | Communicate a problem or unmet need |
+| CONTEXT | Explain the situation or background |
+| EXPERT_AUTHORITY | Establish relevant expertise without inventing credentials |
+| SOLUTION | Explain the proposed solution |
+| DEMO | Demonstrate a product, service, procedure or process |
+| B_ROLL | Support other story beats visually |
+| PROOF | Supply evidence, results or transformation; imagery alone does not establish causation |
+| TESTIMONIAL | Present a person's account or endorsement |
+| OBJECTION_HANDLER | Address a likely question, concern or objection |
+| OFFER | Describe an offer or terms |
+| CTA | Invite a next action |
+| PAYOFF | Deliver the promised result or narrative resolution |
+| TRANSITION | Connect beats or change scene/context |
+| DISCLAIMER | Supply qualifications, limitations or required context |
+| LOW_VALUE | Identify low editorial value or unusability with specific reasons |
 
-Proposed score components:
+Illustrative estimates, not measured truth:
 
-- Sharpness: 30%.
-- Exposure usability: 25%.
-- Stability: 25%.
-- Resolution suitability: 20%.
+```yaml
+semantic_roles:
+  HOOK: 0.93
+  PROBLEM: 0.86
+  EXPERT_AUTHORITY: 0.52
+```
 
-Available components are normalized to 0–100. If a component cannot be measured, report it as unavailable and renormalize the remaining weights.
+Later HOOK subtypes: question, problem, contrarian, result, price, curiosity, authority, transformation, fear_loss, social_proof, visual.
 
-Display audio warnings separately: clipping, low level, no audio, or uncertain intelligibility.
+Later CTA subtypes: hard_cta, soft_cta, offer_cta, urgency_cta, informational_cta, lead_cta.
 
-Scores are heuristics, not objective judgments of creative value. Low scores must not automatically exclude footage. Users can include flagged clips.
+Subtypes are optional versioned labels under their parent role, not mandatory single-choice fields. They are not required in Phase 0E.
+
+### Quality and editorial intelligence
+
+Plan separate 0–100 component scores for visual quality, sharpness, stability, composition, face visibility, audio quality, delivery quality, emotional impact, story relevance, hook strength, CTA strength, conversion potential, and editorial usefulness. Include exposure/resolution warnings where relevant.
+
+Each available score records evidence, method/rubric version, rationale, uncertainty and applicable context; unavailable or inapplicable components are null with a reason, never invented zeros. Face visibility can be inapplicable to useful B-roll. Label technical measurements separately from subjective editorial judgments. No universal fixed-weight total is authoritative. Any optional aggregate records its available components, weights and normalization; explicitly exclude missing/inapplicable components.
+
+Story relevance and conversion potential depend on the brief and audience; conversion potential is a creative hypothesis, not a predicted business result. Low scores do not automatically exclude footage. Users can inspect evidence and override selection.
+
+### Best-take intelligence
+
+Phase 0I will propose groups of duplicate or semantically similar takes using transcript similarity, delivery, visual quality, audio quality, completeness and editorial usefulness. Use lexical/phrase similarity and deterministic signals first; no embeddings or vector search in the MVP. Record pair/group evidence, scores and uncertainty, preserve all originals, and allow reviewers to reject a grouping or choose another take. Repeated wording does not prove interchangeable meaning; preserve negations, qualifications and context. No best-take detection in Phase 0E.
+
+### Creative context
+
+Support objectives including Meta Lead Ad, Conversion / Sales, Awareness, Educational, Organic Social, Testimonial and Personal Brand. The Phase 1 brief records objective, audience, message, desired action, constraints and target duration. The Creative Director selects structure for that brief; do not hard-code one universal hook/problem/solution/CTA sequence.
+
+Reusable source facts and base role assessments are separate from brief-conditioned relevance/rankings. Changing the objective may change selection and contextual scores but must not retranscribe, reprobe or reanalyze unchanged source footage.
+
+### Cost and phase boundary
+
+Use deterministic FFmpeg / ffprobe processing → segmentation → bounded representative frame sampling → transcript → selective multimodal AI analysis. Never send every frame to an AI model. Persist hashes, versions, coverage and stage cache keys; changed inputs invalidate only dependent stages.
+
+Phase 0E establishes ffprobe, canonical technical metadata, timestamp handling, temporal segmentation and representative-frame extraction foundations, and their minimal persistence. No OpenAI account, key, SDK or paid call is required for Phase 0E; transcription, visual/semantic AI, editorial scoring and best-take detection remain later stages.
 
 ### Three storyboards
 
@@ -243,11 +297,11 @@ FFmpeg is the only required media/rendering engine for Phase 0 and Phase 1. The 
 
 ### Phase 0
 
-In local single-user mode without login or paid cloud storage, users can upload multiple videos and inspect genuine extracted metadata, frames, transcripts, scene boundaries, summaries, and quality information. Phase 0 cost/safety controls, caching, and recovery must pass their acceptance gates.
+In local single-user mode without login or paid cloud storage, users can inspect technical, temporal, transcript, visual, semantic-role, quality and best-take evidence in a reusable Footage Library. Phase 0E–0J have separate gates; technical analysis alone is not full editorial understanding. Phase 0 cost/safety controls, caching and recovery must pass their assigned gates.
 
 ### Phase 1
 
-Users can choose among three grounded stories and receive an actual playable 1080 × 1920 (9:16) MP4 generated by FFmpeg from a validated immutable EDL, with safe fit/padding.
+A Creative Brief → Creative Director → Three Story Concepts → Shot Selection → Validated EDL → FFmpeg Render workflow lets users choose among three grounded stories and receive an actual playable 1080 × 1920 (9:16) MP4 generated by FFmpeg from a validated immutable EDL, with safe fit/padding.
 
 ### Full MVP
 

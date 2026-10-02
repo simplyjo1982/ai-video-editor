@@ -1,7 +1,8 @@
 # ARCHITECTURE.md
 
-**Status:** Planning revised to approved MVP decisions; implementation not started  
-**Version:** 0.2
+**Status:** Phase 0A–0D completed; version 0.3 planning revision only; Phase 0E not started
+
+**Version:** 0.3
 
 ## 1. Architectural decision
 
@@ -16,32 +17,58 @@
 | Storage adapter, local filesystem first | Originals, working derivatives, and exports; compatible with private Supabase/cloud storage later |
 | Background worker | Media processing, AI calls, EDL generation, rendering |
 | FFmpeg / ffprobe | Probe, normalization, extraction, scene detection, composition |
-| OpenAI API | Transcription, visual interpretation, story and edit proposals |
+| OpenAI API (Phase 0F onward, evaluated per stage) | Transcription, selective visual/semantic interpretation, story and edit proposals; no Phase 0E prerequisite |
 | Remotion | Deferred beyond Phase 1; no Phase 0/1 dependency |
 
 Heavy work must never depend on a browser session or run inside a short-lived web request.
 
-The initial worker can be one separately deployed container application with analysis and rendering job handlers. Independent scaling can follow without introducing many services upfront.
+The existing TypeScript worker will grow into one modular local process with durable stage handlers; no Docker requirement. Independent deployment/scaling can follow later.
 
 Phase 0 supports explicit local single-user development without login. Bind local services to loopback and enforce local-origin/project checks; the no-login mode must not be enabled for multi-user production. Keep owner fields without requiring an authentication-provider record. Authentication and RLS hardening are deployment gates, not Phase 0 prerequisites.
 
-Use a PostgreSQL polling/claiming worker. Redis and BullMQ are excluded throughout the MVP. Embeddings and vector search are also excluded throughout the MVP. The repository layout is a future plan: this revision does not authorize application scaffolding or dependency installation.
+Use a PostgreSQL polling/claiming worker. Redis and BullMQ are excluded throughout the MVP. Embeddings and vector search are also excluded throughout the MVP. The repository already implements Phase 0A–0D. This version 0.3 revision changes planning only and does not authorize Phase 0E implementation or dependency installation.
 
 ## 2. Upload and analysis pipeline
 
-1. Resolve the local owner context or deployed identity, check project access, and reserve upload capacity.
-2. Transfer resumably through the local storage adapter or directly to private cloud storage.
-3. Finalize the upload through the backend.
-4. Verify the stored object and inspect real media properties.
-5. Reject unsupported or excessive media before expensive processing.
-6. Create a normalized working video and lightweight preview.
-7. Detect candidate scene boundaries.
-8. Extract audio, frames, and technical quality measurements.
-9. Transcribe speech and analyze representative frames.
-10. Build evidence-linked searchable segments.
-11. Publish the completed analysis revision.
+**Product direction: AI Creative Director + AI Video Editor.**
 
-Use resumable uploads in both storage modes. The local adapter persists resumable transfer state and bounded chunks; the precise local transfer library remains to be selected. Cloud mode can use Supabase TUS. Hosted Supabase Free limits must not block local development. [Source: Supabase resumable uploads](https://supabase.com/docs/guides/storage/uploads/resumable-uploads)
+Uploaded Media → Technical Media Intelligence → Temporal Segmentation → Transcript Intelligence → Visual Intelligence → Semantic Video Intelligence → Quality / Best-Take Intelligence → Footage Knowledge Base → Creative Director → Storyboard → EDL → Render.
+
+This is a logical dependency pipeline, not one monolithic job. Persist each stage independently; compatible independent stages may reuse their own inputs without recomputing predecessors. No downstream stage may silently promote incomplete evidence to certainty.
+
+| Stage / gate | Inputs and published results |
+|---|---|
+| Uploaded Media (0D complete) | Local project-scoped resumable uploads, immutable originals, checksum and quota reservations; metadata fields remain nullable pending probe |
+| Technical Media Intelligence (0E) | ffprobe stream/container evidence → canonical metadata (duration, dimensions, rational frame rate, codec, audio streams, orientation, CFR/VFR/unknown), compatibility decision, verified normalized working artifact and original-to-working timing map |
+| Temporal Segmentation (0E foundation) | Deterministic FFmpeg shot-change candidates, continuous-shot fallback, bounded editorial intervals and representative frames with exact timeline references; semantic scene grouping is later |
+| Transcript Intelligence (0F) | Synchronized analysis audio → timestamped Thai/English/mixed speech, sentence/semantic units, contextual quote candidates, optional technically justified speaker labels; preserve no-audio/no-speech |
+| Visual Intelligence (0G) | Selected frames/intervals → people, objects, setting, action, shot type, composition, visible text, before/after imagery, demonstrations and observed temporal changes |
+| Semantic Video Intelligence (0H) | Transcript + visual + temporal evidence → independent multi-role confidence, rationale, limitations and versioned taxonomy from PRD/DATA_MODEL |
+| Quality / Best-Take Intelligence (0I) | Technical metrics plus source evidence → explainable score components and candidate similar-take groups/rankings |
+| Footage Knowledge Base / Footage Library (0J) | Queryable persisted stage results and coverage, source playback, roles/quotes/quality/take filters, metadata/tag/transcript/keyword retrieval |
+| Creative Director (Phase 1) | Brief + frozen evidence snapshot → three objective-conditioned concepts, grounded storyboards and shot selection, then validated immutable EDL and FFmpeg render |
+
+The completed local upload protocol uses persisted reservations and bounded chunks; it does not require choosing a new transfer library. Cloud resumable transport is a future adapter decision. Supabase Free storage limits must not block local development.
+
+### Phase 0E boundary and technical outputs
+
+No OpenAI account, key, SDK, model call or cost reservation table is required in Phase 0E. Use configurable `FFPROBE_PATH` and `FFMPEG_PATH`, with PATH fallback and actionable configuration errors. Invoke allowlisted subprocess arguments without shell interpolation, apply resource limits/timeouts and terminate process trees safely.
+
+Probe accepted originals, including M4V, before expensive processing. Store selected video/audio stream indexes and all stream inventory, coded and display dimensions, sample/display aspect ratio, rotation, duration derivation, rational average/nominal frame rate, codec/profile and audio channels/sample rate. CFR/VFR detection records method and evidence; disagreement between nominal and average rates is not proof of VFR. Bounded packet/frame inspection may refine classification; report unknown if inconclusive.
+
+Establish verified normalization and its timing map in 0E so subsequent layers share the canonical timeline. Probe metadata, normalization, temporal segmentation and representative-frame extraction are separately cacheable technical stages. No speech extraction/transcription, visual model calls, semantic roles, editorial scores, best-take detection or creative generation in 0E. Representative images are extraction artifacts, not visual understanding.
+
+Use the existing PostgreSQL job shell for technical-stage execution with leases, bounded retries, pause/cancel checkpoints, concurrency controls, temporary cleanup and idempotent publication. Implement only the job persistence additions required for those handlers; do not build a general workflow platform. Full library/search UX arrives in 0J; 0E needs only inspection/status sufficient to verify its artifacts.
+
+### Editorial evidence contract
+
+PRD defines the controlled role taxonomy and optional HOOK/CTA subtypes. Persist multiple independent role assignments per segment, each with 0–1 confidence, rationale, evidence IDs/ranges, provenance and unknown/insufficient-evidence status. These are estimates, not objective labels. Separate observation from inference, especially claimed authority, results, testimonials and before/after causality. Do not force a role or infer low value from absent analysis.
+
+Quality components follow PRD: visual quality, sharpness, stability, composition, face visibility, audio quality, delivery quality, emotional impact, story relevance, hook strength, CTA strength, conversion potential and editorial usefulness. Store method/rubric, evidence, uncertainty and applicability; missing scores stay null. Aggregates are optional and explain their weights. Contextual scores include a brief hash; conversion estimates are not business-outcome predictions.
+
+In 0I, propose repeated-take groups using lexical transcript similarity plus delivery, visual/audio quality, completeness and editorial usefulness. No embeddings. Preserve all takes, explain ranking and allow override; near-duplicate wording with a changed qualification may express a different claim. Best-take detection is not part of 0E.
+
+The Footage Knowledge Base is a logical view over versioned PostgreSQL evidence and immutable artifacts, not a new vector database or separate service. Source analysis stays reusable across briefs. Phase 1 contextual assessment consumes the same evidence without reprobe, retranscription or vision reruns.
 
 ### Configurable admission and upload reservations
 
@@ -72,7 +99,7 @@ Maintain three distinct artifacts:
 - **Working video:** SDR H.264 MP4, yuv420p, square pixels, constant 30 fps, rotation applied, original display proportions preserved, even dimensions, configurable longest-edge cap defaulting to 1920 pixels; do not upscale during normalization.
 - **Preview proxy:** Lower-resolution H.264 MP4 derivative on the same timeline, with an explicit mapping if any timing differs.
 
-Analysis timestamps and EDL source ranges use the working-video timebase. Store original stream timebases/start PTS, normalization profile/version, working frame count, and a per-frame original-video PTS mapping, including dropped/duplicated VFR frames. Do not claim an exact inverse for discarded original frames. Frame n has working time n/30 seconds; millisecond labels are display values, not a second timing source of truth.
+Original probe facts retain original stream coordinates. Published downstream analysis timestamps and EDL source ranges use the verified working-video timebase; preliminary original-timeline candidates must name their coordinate system and cannot be consumed as normalized ranges. Store original stream timebases/start PTS, normalization profile/version, working frame count, and a per-frame original-video PTS mapping, including dropped/duplicated VFR frames. Do not claim an exact inverse for discarded original frames. Frame n has working time n/30 seconds; millisecond labels are display values, not a second timing source of truth.
 
 Preserve audio/video offsets during normalization. Do not independently reset audio and video in a way that changes synchronization.
 
@@ -84,9 +111,9 @@ This intentionally prioritizes reproducible 1080p-class MVP exports over origina
 
 Configurable starting policy, tuned during Phase 0 and saved with each analysis revision:
 
-- Detect visual shot changes.
-- Treat a continuous recording as a valid single scene.
-- Split long scenes into search segments, default maximum ten seconds.
+- Detect visual shot changes deterministically in 0E; boundaries are candidates, not semantic scene understanding.
+- Treat a continuous recording as a valid single shot, without inventing semantic scene boundaries.
+- Split long shots into useful editorial intervals, default maximum ten seconds; later transcript/semantic units can overlap these intervals without rewriting original segment revisions.
 - Extract a midpoint frame per segment and extra boundary frames where useful.
 - Default vision input cap: 300 frames per project, allocated deterministically across eligible assets/segments. Record unsampled intervals and coverage; do not fabricate observations for them.
 - If the cap reduces sampling density, record and display that limitation.
@@ -97,9 +124,9 @@ Scene boundaries are candidates, not guaranteed edit points. Transcript boundari
 
 Use an OpenAI transcription configuration that actually provides the required timestamp granularity. Do not assume every transcription model has interchangeable output fields.
 
-The current documentation limits `timestamp_granularities[]` to `whisper-1` and describes a 25 MB transcription-upload limit. Use compressed audio or bounded chunks, preserve chunk offsets, and reconcile overlapping boundaries. Recheck these constraints when implementation begins. [Source: OpenAI file transcription](https://developers.openai.com/api/docs/guides/speech-to-text)
+Select and verify the Phase 0F provider/model and its current upload/timestamp capabilities before implementation of that stage. Do not assume timestamp granularity, language support or speaker labels are interchangeable across models. Evaluate Thai, English and mixed-language fixtures; reconcile chunk offsets, overlap and codec delay before publishing. Keep the provider adapter replaceable.
 
-Initial baseline: `whisper-1` with timestamped output, subject to Thai/English benchmark results. Keep the provider adapter replaceable.
+Useful quotes retain surrounding context and exact evidence intervals. Sentence/semantic units must not discard negations or qualifications. Speaker information is optional and records the method/confidence; lack of reliable diarization does not justify invented identities. No transcription dependency is installed for Phase 0E.
 
 No-audio and no-speech results are valid outcomes, not processing failures.
 
@@ -109,7 +136,7 @@ Start with:
 
 - Indexed English transcript/description search.
 - Thai substring and trigram-assisted matching.
-- Filters for asset, speech presence, quality warnings, and tags.
+- Phase 0J filters for asset, speech presence/language, role/subtype, confidence/coverage, quality warnings, take group and tags; unknown values remain distinguishable.
 
 Include metadata, tags, transcript, and description keywords. No embeddings, vector columns/indexes, or vector service in the MVP. Full-text search alone must not be assumed sufficient for Thai; tune the keyword baseline against the labeled retrieval benchmark.
 
@@ -119,10 +146,12 @@ Persist stage cache keys from project scope, immutable input content/artifact ha
 
 ## 3. Story and EDL pipeline
 
-1. Capture the user's objective, audience, and target duration; Phase 1 uses 9:16 only, with ratio selection added in Phase 2.
+**Phase 1:** Creative Brief → Creative Director → Three Story Concepts → Shot Selection → Validated EDL → FFmpeg Render.
+
+1. Capture a versioned creative brief: objective, audience, message, desired action, constraints and duration; Phase 1 uses 9:16 only. Objective presets include Meta Lead Ad, Conversion / Sales, Awareness, Educational, Organic Social, Testimonial and Personal Brand; allow extension without one universal story formula.
 2. Freeze a snapshot of eligible analysis revisions.
-3. Retrieve relevant footage segments.
-4. Ask the model for three structured story proposals.
+3. Retrieve evidence-backed segments, semantic roles, quotes, take alternatives and quality limitations; compute brief-conditioned relevance from cached facts.
+4. The Creative Director proposes three structured concepts with distinct rationale/structure suited to the brief, each represented by grounded storyboard beats. Preserve necessary disclaimers and context.
 5. Validate every referenced asset and interval.
 6. Show complete, valid options.
 7. Record the selected story.
@@ -276,38 +305,38 @@ Configure an overall active-job ceiling and separate analysis/render ceilings, i
 | Worker interruption | Lost or duplicate output | Leases, idempotency, atomic publication |
 | Expensive vision/transcoding | Unacceptable cost or latency | Input caps, cached artifacts, measured budgets |
 | Crop removes the subject | Unusable export | Safe fit default and crop preview |
+| Semantic role/quality score mistaken for fact | Misleading selection or unsupported claims | Evidence, uncertainty, null/abstain, rubric evaluation and user override |
+| Similar takes differ in meaning | Lost qualification or wrong claim | Context/completeness review and retained alternatives |
+| Universal story template | Poor fit for objective/audience | Versioned creative brief and comparative objective fixtures |
 | Model refusal or malformed response | Blocked workflow | Typed failure, bounded retry, retained prior state |
 
 Vision descriptions must remain inspectable and uncertain where appropriate; OpenAI explicitly documents visual interpretation limitations. [Source: OpenAI images and vision](https://developers.openai.com/api/docs/guides/images-vision)
 
-## 10. Proposed repository structure
+## 10. Repository structure and implementation boundary
 
-The future repository root will contain the five approved Markdown documents.
+The five planning documents and completed Phase 0A–0D code remain in the existing npm-workspaces repository.
 
-| Path | Purpose |
+| Path | Current role / later extension |
 |---|---|
-| `apps/web/` | Next.js UI and thin server endpoints |
-| `apps/worker/` | Job execution and FFmpeg orchestration |
-| `packages/contracts/` | Shared schemas, EDL types, validation |
-| `packages/ai/` | OpenAI adapters, prompts, response handling |
-| `packages/media/` | Timing, probing, normalization, render planning |
-| `packages/db/` | Database access and generated types |
-| `packages/storage/` | Local filesystem and later private cloud adapters |
-| `supabase/migrations/` | PostgreSQL schema/indexes/job functions usable locally; deployed RLS added before multi-user production |
-| `tests/unit/` | Timing, scoring, validation, patch behavior |
-| `tests/integration/` | Storage, jobs, providers, renderer |
-| `tests/e2e/` | User workflow tests |
-| `tests/fixtures/` | Small licensed or synthetic test media |
-| `references/` | Lowercase reference directory; provenance/rights manifest planned; large media tracking policy to be decided |
-| `infra/` | Worker container and deployment configuration |
+| `apps/web/` | Existing projects/upload UI and thin server endpoints; later intelligence inspection |
+| `apps/worker/` | Existing TypeScript shell; technical job execution begins in 0E |
+| `packages/contracts/` | Shared versioned schemas; add each intelligence contract when its stage is implemented |
+| `packages/media/` | Existing local upload/storage adapter; future probing, timing, normalization and render planning |
+| `packages/db/` | Existing typed PostgreSQL access and integration tests |
+| `packages/db/migrations/` | Existing 0001–0003 migrations; additive migrations only, never rewrite applied history |
+| `tests/` | Existing workflow/upload tests; add stage-specific unit/integration/evaluation fixtures as needed |
+| `references/` | Intentionally tracked reference-video.mp4; design reference, separate from evaluation fixtures |
+| Optional future modules | AI adapters from 0F onward; split storage into a separate package only if needed; no Supabase/Docker dependency now |
+
+Runtime originals/working/temp/exports remain under configured MEDIA_ROOT, preferably outside the repository, and ignored by Git. No new packages, migrations or application changes are made by this planning revision.
 
 ## 11. Remaining decisions and explicit exclusions
 
-- Before implementation setup: worker language/runtime and pinned package/tool versions; local PostgreSQL provisioning and resumable-upload library.
-- Before paid benchmarks: exact vision/story model, prompt versions, benchmark hardware, numeric spending/retry/timeout/disk/cleanup settings, representative fixture inventory/rights, mixed-language scoring/threshold, and versioned text-normalization/reviewer rubrics.
+- Resolved by 0A–0D: TypeScript/npm workspaces, local PostgreSQL, local owner and bounded resumable uploads. Before 0E: record installed ffprobe/FFmpeg versions, exact normalization/segmentation profiles, VFR classification method, timestamp-map encoding, resource limits and technical fixture manifest.
+- Before paid benchmarks: transcription/vision/semantic/story models and prompt versions, hardware, numeric spending settings, fixture inventory/rights, mixed-language scoring/threshold and text-normalization rules. Before 0H/0I: freeze role/abstention, score applicability, take-equivalence and ranking rubrics/thresholds on held-out evidence. Before Phase 1: validate objective-specific selection thresholds and brief schema. Resource timeouts/retries/disk/cleanup are already a 0E gate.
 - Before multi-user production: hosting, authenticated login method, RLS policies, cloud storage plan, backup/provider retention, and issued-URL expiry/revocation policy.
 - Beyond MVP: embeddings/vector search, HEVC/HDR expansion, music/voiceover/overlapping tracks, collaboration, billing, desktop packaging, and automatic subject tracking. GPU processing is optional future work.
 - Beyond Phase 1 only, if separately justified: Remotion. FFmpeg remains sufficient for the planned MVP.
 - Quotas may change through validated configuration; larger workloads require capacity evaluation, not an architectural rewrite.
 
-Canonical timing, project boundaries, EDL validation/versioning, analysis caching, and retry-safe job recovery are not postponed. Phase 0 authentication is intentionally deferred. This is a planning-only revision; implementation has not begun.
+Canonical timing, project boundaries, EDL validation/versioning, analysis caching and retry-safe recovery remain mandatory at their phase gates. Authentication is deferred until multi-user deployment. Phase 0A–0D are complete; this is a planning-only revision and Phase 0E has not begun.

@@ -1,13 +1,14 @@
 # MVP_ROADMAP.md
 
-**Status:** Planning revised to approved MVP decisions; implementation not started  
-**Version:** 0.2
+**Status:** Phase 0A–0D completed; version 0.3 planning revision only; Phase 0E not started
+
+**Version:** 0.3
 
 ## Delivery approach
 
 Use evidence-based phase gates. A phase is complete when its workflow passes with real media, not when its screens are finished.
 
-This revision records the approved MVP decisions and pre-implementation clarifications only. Do not start implementation, install dependencies, or initialize Next.js as part of this document update. Implementation requires a subsequent instruction.
+Version 0.3 plans the AI Creative Director + AI Video Editor direction. Phase 0A–0D are completed: npm-workspaces foundation, PostgreSQL, projects and resumable local uploads. This update changes planning documents only. Do not implement Phase 0E, install dependencies or create migrations until separately instructed.
 
 Across the MVP: PostgreSQL-backed jobs with a polling/claiming worker; no Redis/BullMQ and no embeddings/vector search. FFmpeg is the only required Phase 0/1 engine; Remotion is deferred beyond Phase 1. PRD quotas are configurable defaults. Preserve canonical timestamps, validated immutable EDLs, retry-safe jobs, analysis caching, and prevention of unnecessary re-analysis. Use lowercase `references/`.
 
@@ -15,26 +16,66 @@ Across the MVP: PostgreSQL-backed jobs with a polling/claiming worker; no Redis/
 
 **Required proof:**
 
-Upload videos → analyze videos → extract transcript and frames → show footage analysis in the UI.
+Uploaded Media → Technical Media Intelligence → Temporal Segmentation → Transcript Intelligence → Visual Intelligence → Semantic Video Intelligence → Quality / Best-Take Intelligence → Footage Knowledge Base. Phase 1 continues with Creative Director → Storyboard → EDL → Render.
 
-### Deliverables
+Each stage publishes reusable evidence, not merely a transcript or description. Unknown/unsampled evidence stays explicit.
 
-- Local single-user projects without login; owner fields retained. Authentication and production RLS do not block Phase 0.
-- Local PostgreSQL support and local storage abstraction compatible with future Supabase/cloud storage; no paid Supabase storage prerequisite.
-- Multiple resumable uploads with atomic slot/byte reservations, expiry/release, idempotent finalization, and actual duration admission after probing.
-- Media validation and metadata.
-- Separate PostgreSQL polling/claiming worker with leases, heartbeats, bounded retries, and idempotent publication.
-- Working-media normalization and preview proxies.
-- Scene detection and segment creation.
-- Audio and representative-frame extraction.
-- Timestamped Thai/English transcription.
-- Visual summaries and source references.
-- Metadata/tag/transcript/keyword search and explainable quality scores; no embeddings.
-- Progress, retry, partial-failure handling, pause/resume, budget/dependency pauses, and cancellation states.
-- Configurable project limits and frame sampling; API spending reservations/guardrails, subprocess timeouts, and concurrency limits.
-- Distinct original, working, temporary, and final-export storage classes; safe temporary cleanup and retention rules for version dependencies.
-- Stage-level analysis caching with explicit invalidation, preventing paid re-analysis on reopening or downstream edits.
-- Licensed/synthetic fixture manifest, human labels, evaluation rules, and recorded configuration/version evidence.
+### Delivery stages and boundaries
+
+| Stage | Scope and exit evidence |
+|---|---|
+| Phase 0A — Foundation (complete) | TypeScript/npm workspaces, Next.js web, worker shell, shared packages |
+| Phase 0B — Database foundation (complete) | Local PostgreSQL, typed access, initial migrations and connectivity tests |
+| Phase 0C — Projects (complete) | Create/list/open persisted projects under local owner, no login |
+| Phase 0D — Resumable local uploads (complete) | Original storage, quota reservations, multiple files, persistence and recovery; no processing |
+| Phase 0E — Technical Media Intelligence | ffprobe, canonical technical metadata, verified normalization/timestamp mapping, temporal segmentation and representative-frame foundations; no OpenAI |
+| Phase 0F — Transcript Intelligence | Synchronized analysis audio, Thai/English/mixed timestamped speech, sentence/semantic units, useful quotes; optional justified speaker labels |
+| Phase 0G — Visual Intelligence | Selective frame/interval evidence for people, objects, setting, action, shot type, composition, visible text, before/after, demonstrations and temporal changes |
+| Phase 0H — Semantic Video Intelligence | Controlled role taxonomy, independent multi-role confidence, evidence/rationale, abstention and optional subtype support |
+| Phase 0I — Quality + Best Take Intelligence | Explainable component scores, candidate similar/duplicate take groups, ranked alternatives and override |
+| Phase 0J — Footage Library | Integrated Footage Knowledge Base inspection, source playback, role/quote/quality/take filters and metadata/tag/transcript/keyword retrieval |
+
+### Phase 0E — Technical Media Intelligence
+
+This is the next implementation boundary, not an authorization to implement it in this revision.
+
+- Integrate ffprobe/FFmpeg using configurable FFMPEG_PATH/FFPROBE_PATH with PATH fallback; safe arguments, bounded subprocesses and disk/concurrency limits.
+- Persist duration, dimensions, rational frame rate, codec, audio streams, orientation, CFR/VFR/unknown evidence, stream timebases/start PTS and normalization information. Validate compatibility and atomically admit actual duration against configurable quotas.
+- Produce verified canonical working media and an original-to-working timing map. Preserve A/V origin, delayed audio, rotation and VFR duplicate/drop mapping. Do not fake metadata.
+- Establish deterministic candidate shot detection, continuous-shot fallback, bounded editorial intervals and representative-frame extraction with frame/PTS provenance and coverage. Semantic scene grouping is later.
+- Reuse PostgreSQL jobs and analysis_runs for separate cacheable technical stages, lease-safe publication, retries, pause/resume, cancellation and cleanup. Persist only DATA_MODEL.md's justified additions: artifacts, media_metadata, temporal_segments, representative_frames, and needed extensions of existing rows.
+- Preserve uploads and applied migrations. Show technical status/results sufficient for inspection without requiring the full 0J library.
+- Pass 0E with no OpenAI key, SDK or external AI calls. No transcription, AI descriptions, semantic roles, editorial/quality ranking, best-take detection, story generation, EDL or rendering.
+
+### Phase 0F — Transcript Intelligence
+
+Extract synchronized analysis audio and use an evaluated timestamp-capable provider for Thai, English and mixed speech. Preserve chunk offsets/overlap, no-audio/no-speech outcomes, sentence/semantic units and useful quotes with context. Add speaker labels only if technically justified; never guess identities. Establish atomic API spending guardrails before any paid request. Select models and benchmark thresholds at this gate, not in 0E.
+
+### Phase 0G — Visual Intelligence
+
+Use deterministic segmentation and capped representative samples before selective multimodal calls. Describe supported people/objects/settings/actions, shot type/composition, visible text, before/after imagery, demonstrations and temporal changes. Cite evidence and report uncertainty/unsampled intervals. Do not send every frame or claim a sampled still proves continuous action or causation.
+
+### Phase 0H — Semantic Video Intelligence
+
+Implement PRD/DATA_MODEL's versioned taxonomy: HOOK, PROBLEM, CONTEXT, EXPERT_AUTHORITY, SOLUTION, DEMO, B_ROLL, PROOF, TESTIMONIAL, OBJECTION_HANDLER, OFFER, CTA, PAYOFF, TRANSITION, DISCLAIMER, LOW_VALUE. A segment can have several roles with independent confidence. Preserve rationale and frame/transcript evidence; abstain when insufficient. Plan optional HOOK/CTA subtypes as specified in PRD; no single forced role or automatic deletion of low-value material.
+
+### Phase 0I — Quality + Best Take Intelligence
+
+Score visual quality, sharpness, stability, composition, face visibility, audio quality, delivery quality, emotional impact, story relevance, hook strength, CTA strength, conversion potential and editorial usefulness. Separate technical measurements from subjective estimates; record rubric, evidence, uncertainty and null/inapplicable values. Contextual scores require explicit assessment context; Phase 1 binds them to briefs. No universal fixed-weight score or promised conversion result.
+
+Propose repeated-take groups using lexical transcript similarity, delivery, visual/audio quality, completeness and editorial usefulness. Preserve meaning, negations and qualifications, retain every take, and offer rank rationale/override. No embeddings or vector search. Neither detection nor editorial scoring belongs in 0E.
+
+### Phase 0J — Footage Library
+
+Integrate evidence stores into an inspectable Footage Knowledge Base with coverage, stage status, role/quality/quote/take views and source playback. Retrieve via metadata, tags, transcript and keywords, including Thai/English/mixed-language evaluation. Do not introduce a separate knowledge-base service or vector store.
+
+### Cross-stage deliverables
+
+- Local owner without login; local PostgreSQL and storage abstraction, no hosted Supabase or paid storage requirement.
+- Atomic resumable slot/byte reservations; post-probe duration admission; separate originals/working/temp/exports budgets and retention.
+- Immutable artifacts/revisions, stage dependencies/cache keys, current-lease publication, bounded retry/timeouts/concurrency, pause/resume/cancellation and cleanup.
+- Configurable sampling caps/coverage and cost reservations before paid stages from 0F onward.
+- Licensed/synthetic fixtures, labeled evidence and versioned rubrics; distinguish completed 0A–0D checks from new planned gates.
 
 ### Exit criteria
 
@@ -47,7 +88,7 @@ Upload videos → analyze videos → extract transcript and frames → show foot
 - Reopening/retrying completed work reuses valid analysis; changed settings invalidate only dependent stages.
 - The workflow succeeds locally without login or hosted Supabase credentials/storage.
 - Configured budgets, retries, timeouts, concurrency, upload reservations, pause/resume/cancellation, and cleanup pass their tests.
-- Phase 0 tests P0-01–P0-34 and Phase 0 system gates in ACCEPTANCE_TESTS.md pass. Multi-user authentication/RLS gates are deferred until deployment readiness.
+- All Phase 0 tests P0-01–P0-43 and assigned system gates pass by 0J, incrementally according to ACCEPTANCE_TESTS.md. Technical-only 0E passes independently of paid AI gates. Authentication/RLS remains a deployment gate.
 
 ### Performance experiment
 
@@ -68,12 +109,12 @@ Run separate capability/boundary fixtures at configured limits, including the de
 
 **Required proof:**
 
-Analyzed footage → three stories → story selection → EDL → actual MP4.
+Creative Brief → Creative Director → Three Story Concepts → Shot Selection → Validated EDL → FFmpeg Render. Each concept is presented as a grounded storyboard before selection.
 
 ### Deliverables
 
-- Brief inputs; fixed initial 9:16 output profile.
-- Three grounded storyboards.
+- Versioned brief: objective, audience, message, desired action, constraints and duration; fixed initial 9:16 output. Support Meta Lead Ad, Conversion / Sales, Awareness, Educational, Organic Social, Testimonial and Personal Brand, with extensible objectives.
+- Creative Director generates three concepts/storyboards from a frozen evidence snapshot, semantic roles and take alternatives; rationale and structure depend on the brief, never one universal formula.
 - Story selection.
 - Ordered clip review with remove/reorder/replace/in-out adjustments, each saved as a validated new EDL version.
 - EDL v1 and deterministic validation.
@@ -91,7 +132,7 @@ Analyzed footage → three stories → story selection → EDL → actual MP4.
 - Render contains the expected source clips in the expected order.
 - Preview and download refer to the same verified artifact.
 - Invalid EDLs never reach FFmpeg.
-- Phase 1 tests P1-01–P1-21 and their system gates pass, including portrait output and safe fit.
+- Phase 1 tests P1-01–P1-23 and their system gates pass, including objective-dependent selection, portrait output and safe fit.
 
 Proposed performance target: a 60-second 1080 × 1920 (9:16) render completes within five minutes on the benchmark worker, excluding queue time.
 
@@ -152,4 +193,4 @@ Proposed performance target: a 60-second 1080 × 1920 (9:16) render completes wi
 
 ## Remaining setup decisions
 
-Resolve the ARCHITECTURE.md decision register at its stated gates: runtime/tool versions and local provisioning before setup; models, fixture inventory, hardware, and numeric operating budgets before paid benchmarks; authentication/hosting and cloud retention policies before multi-user production. These decisions do not reopen the approved local mode, portrait-first export, FFmpeg, PostgreSQL queue, or no-vector-search scope.
+Resolve ARCHITECTURE.md decisions at their gates: technical profiles, timestamp-map encoding, detector/sampling parameters and resource limits before 0E implementation; models, mixed-language thresholds, semantic/quality/take rubrics and held-out evaluation before their AI stages; authentication/hosting and cloud retention before multi-user production. Local provisioning, TypeScript/npm and resumable uploads are established. These decisions do not reopen the approved local mode, portrait-first export, FFmpeg, PostgreSQL queue, or no-vector-search scope.
