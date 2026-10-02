@@ -1,0 +1,36 @@
+{
+  "name": "ai-video-editor",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": ["apps/*", "packages/*"],
+  "engines": { "node": ">=24 <25", "npm": ">=11 <12" },
+  "packageManager": "npm@11.19.0",
+  "scripts": {
+    "dev": "npm run dev:web",
+    "dev:web": "npm run build:packages && npm run dev --workspace=@ai-video-editor/web",
+    "dev:worker": "npm run build:worker && npm run start --workspace=@ai-video-editor/worker",
+    "build:packages": "npm run build --workspace=@ai-video-editor/contracts --workspace=@ai-video-editor/media --workspace=@ai-video-editor/db",
+    "build:worker": "npm run build:packages && npm run build --workspace=@ai-video-editor/worker",
+    "build:web": "npm run build:packages && npm run build --workspace=@ai-video-editor/web",
+    "build": "npm run build:worker && npm run build --workspace=@ai-video-editor/web",
+    "start:web": "npm run start --workspace=@ai-video-editor/web",
+    "start:worker": "npm run start --workspace=@ai-video-editor/worker",
+    "typecheck": "npm run build:packages && npm run typecheck --workspaces",
+    "lint": "eslint . --max-warnings=0",
+    "check": "npm run typecheck && npm run lint",
+    "db:create": "npm run build:packages && node packages/db/dist/cli.js create",
+    "db:migrate": "npm run build:packages && node packages/db/dist/cli.js migrate",
+    "db:verify": "npm run build:packages && node packages/db/dist/cli.js verify",
+    "test:db": "npm run build:packages && node --test packages/db/dist/integration.test.js packages/db/dist/projects.test.js",
+    "test:web": "node --test tests/projects-web.test.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@next/eslint-plugin-next": "16.3.8",
+    "@types/node": "24.19.0",
+    "eslint": "10.11.0",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.71.0"
+  }
+}

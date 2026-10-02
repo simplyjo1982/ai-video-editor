@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+
+# Local configuration and secrets (keep the blank example)
+.env
+.env.*
+!.env.example
+
+# Build output and tooling caches
+.next/
+dist/
+build/
+out/
+coverage/
+*.tsbuildinfo
+.eslintcache
+.npm-cache/
+
+# Local originals, working media, temporary media, and exports
+/.local/
+/media/
+/generated-media/
+/temporary-media/
+/tmp/
+/temp/
+
+# Runtime media at the root or within an application workspace
+uploads/
+raw-footage/
+exports/
+renders/
+generated-media/
+temporary-media/
+**/media/originals/
+**/media/working/
+**/media/temp/
+**/media/exports/
+# Ignore application-local media without hiding the packages/media source package.
+/apps/**/media/
+
+# Logs
+logs/
+*.log
+
+# OS metadata
+.DS_Store
+Thumbs.db
+
+# Planning documents and references/reference-video.mp4 remain trackable.
