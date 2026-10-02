@@ -38,6 +38,10 @@ temporary-media/
 # Ignore application-local media without hiding the packages/media source package.
 /apps/**/media/
 
+# Upload API route directories contain source code, not runtime uploads.
+!/apps/web/app/api/projects/*/uploads/
+!/apps/web/app/api/projects/*/uploads/**
+
 # Logs
 logs/
 *.log

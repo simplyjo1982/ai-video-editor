@@ -47,6 +47,7 @@ export type JobStatus = 'queued' | 'running' | 'retry_wait' | 'pause_requested' 
 export interface ProjectRow { id: string; owner_id: string; name: string; status: 'active' | 'archived'; created_at: Date; updated_at: Date }
 export { createProject, listProjects, getProject, validateProjectName, ProjectNameError, LOCAL_OWNER_ID } from './projects.js';
 export type { ProjectSummary } from './projects.js';
+export { UploadRepository, listMediaAssets } from './uploads.js';
 export interface MediaAssetRow { id: string; project_id: string; original_filename: string;
   storage_backend: string; storage_namespace: string; storage_path: string;
   media_type: string; file_size_bytes: string; duration_ms: string | null;
