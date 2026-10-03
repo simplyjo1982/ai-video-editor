@@ -65,3 +65,9 @@ export interface AnalysisRunRow { id: string; project_id: string; media_asset_id
   revision: number; pipeline_version: string; schema_version: number;
   model_provider: string | null; model_identifier: string | null; prompt_version: string | null;
   input_hash: string | null; cache_key: string | null; created_at: Date; updated_at: Date }
+export { TECHNICAL_JOB_TYPE, technicalConfigHash, technicalCacheKey, enqueueTechnical,
+  claimTechnicalJob, heartbeatTechnicalJob, getTechnicalJobAsset, recordOriginalChecksum,
+  admitTechnicalDuration, findCachedTechnicalRun, cachedRunArtifacts, completeCachedTechnicalJob,
+  startTechnicalRun, publishTechnicalRun, failTechnicalJob, latestTechnicalStates,
+  listTechnicalMetadata, getTechnicalInspection, getFrameArtifact } from './technical.js';
+export type { TechnicalJob, TechnicalAsset, TechnicalRun, TechnicalMetadataView, TechnicalInspection } from './technical.js';

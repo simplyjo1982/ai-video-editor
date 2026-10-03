@@ -24,7 +24,8 @@
     "db:verify": "npm run build:packages && node packages/db/dist/cli.js verify",
     "test:db": "npm run build:packages && node --test packages/db/dist/integration.test.js packages/db/dist/projects.test.js",
     "test:web": "node --test tests/projects-web.test.mjs",
-    "test:upload": "node --test tests/uploads.test.mjs tests/uploads-web.test.mjs"
+    "test:upload": "node --test tests/uploads.test.mjs tests/uploads-web.test.mjs",
+    "test:technical": "npm run build:packages && node --test tests/technical-media.test.mjs tests/technical-job.test.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

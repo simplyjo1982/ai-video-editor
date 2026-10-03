@@ -1,13 +1,13 @@
 # AI Video Editor
 
-Phase 0D adds local, resumable video uploads and persisted Footage lists to the
-Phase 0A–0C foundation. The worker verifies a
-database connection at startup and closes its pool on graceful shutdown. It
-does not claim or process jobs.
+Phase 0E adds deterministic technical processing to local, resumable uploads.
+The PostgreSQL worker claims technical jobs and builds verified working video,
+timing maps, temporal segments, and representative frames. It does not call
+OpenAI APIs.
 
 The five planning documents describe the broader MVP and remain preserved as-is.
 Their full Phase 0 acceptance suite is not a claim about this foundation stage.
-Phase 0E and later work require separate authorization.
+Phase 0F and later work remain deferred.
 
 ## Workspaces
 
@@ -27,9 +27,9 @@ root development/check/build commands build these before their consumers.
 
 Use standalone Node.js 24 LTS and npm 11. Commands below run from the repository
 root in PowerShell. Use `npm.cmd` to avoid execution-policy issues with `npm.ps1`.
-Phase 0B requires local PostgreSQL and a private `DATABASE_URL`; no API keys or
-media tools are used by this stage. Configure the database as described below
-before starting the worker or checking web database connectivity.
+Local development requires PostgreSQL, FFmpeg, ffprobe, a private `DATABASE_URL`,
+and `MEDIA_ROOT`. Configure them before starting the worker or checking web
+database connectivity. `OPENAI_API_KEY` is unused in Phase 0E.
 
 If Codex has an older PATH snapshot, prepend standalone Node for that shell only:
 
@@ -66,7 +66,7 @@ Start the worker in a separate terminal:
 npm.cmd run dev:worker
 ```
 
-Expect `[worker] AI Video Editor | Phase 0B | Database connected.` followed by a
+Expect `[worker] AI Video Editor | Phase 0E | Database connected.` followed by a
 startup message. Press Ctrl+C or type `exit` and Enter for graceful shutdown.
 The `exit` command is also usable in a piped Windows terminal. SIGINT/SIGTERM
 handlers share the same cleanup path. Worker development compiles then starts;
@@ -92,10 +92,9 @@ URL; do not run dev and production web servers on port 3000 simultaneously.
 `.env` on first connection; existing process environment variables take precedence.
 Do not commit or print a real environment file. Credentials remain server-side.
 
-Later processing integration will accept explicit `FFMPEG_PATH` and `FFPROBE_PATH`
-through worker configuration, including Windows paths containing spaces. The
-media package will receive these as configuration instead of assuming global
-executables; resolution and subprocess execution are intentionally absent now.
+Technical processing accepts explicit `FFMPEG_PATH` and `FFPROBE_PATH` values,
+including Windows paths containing spaces. When unset, it looks on PATH. It
+spawns tools with argument arrays, no shell, bounded output, and timeouts.
 `MEDIA_ROOT` now identifies local storage outside the source tree where practical,
 with separate `originals`, `working`, `temp`, and `exports` directories.
 
@@ -129,11 +128,11 @@ records SHA-256 checksums in the technical `schema_migrations` ledger. Running i
 again is a no-op. Never edit an applied migration; add a new numbered migration.
 Migrations run explicitly, never during web builds or worker startup.
 
-The four domain tables are `projects`, `media_assets`, `jobs`, and `analysis_runs`.
+The original four domain tables are `projects`, `media_assets`, `jobs`, and `analysis_runs`.
 `media_assets` is the initial physical form of the planning document's `assets`
-entity, with the small metadata subset requested for Phase 0B inline. Full metadata,
-artifacts, policy tables, and other future entities remain deferred. Phase 0D adds
-the upload reservation ledger described below.
+entity, with the small metadata subset requested for Phase 0B inline. Phase 0D
+added the upload reservation ledger; Phase 0E adds technical metadata and artifacts.
+Transcript, semantic, and policy entities remain deferred.
 The fixed local owner UUID is persisted without an authentication dependency.
 It must be explicitly mapped before future multi-user deployment.
 
@@ -146,10 +145,10 @@ No product quota is encoded in the schema. Callers must provide `max_attempts`.
 Foreign keys enforce same-project media references for jobs and analysis runs.
 Referenced rows cannot be silently deleted. Jobs include approved pause/cancel
 states, lease metadata, project-scoped idempotency, and eligible-queue indexes.
-Future claiming must use transactional row locking/`SKIP LOCKED`, dependency and
-capacity checks, and current lease tokens; none of that processing is implemented.
-Analysis revisions carry pipeline/model/prompt/schema and future cache identifiers;
-no actual analysis or cache engine exists yet.
+Phase 0E technical claiming uses transactional row locking/`SKIP LOCKED`, leases,
+heartbeats, and retry limits. Other future job types remain unimplemented.
+Analysis revisions retain their pipeline/model/prompt/schema fields; technical
+cache identity uses the source hash, processor version, settings, and tool versions.
 
 Integration tests apply migrations twice, verify tables/indexes, round-trip all
 four entities, reject cross-project references and invalid records, and roll back
@@ -213,7 +212,7 @@ The local adapter creates these classes under the root:
 
 ```text
 originals/<project UUID>/<server-generated asset UUID>.<mp4|mov|m4v>
-working/       # reserved for later processing
+working/<project UUID>/<asset UUID>/<cache key>/
 temp/<project UUID>/<upload UUID>.part
 exports/       # reserved for later rendering
 ```
@@ -238,7 +237,7 @@ Migration `0003_upload_reservations.sql` records effective policy snapshots and
 hashes. Project-row locking reserves declared bytes and file slots atomically
 against registered assets plus incomplete uploads. Actual received length is
 bounded and must match the reservation before registration. No duration admission
-or codec validation is claimed until probing is implemented in Phase 0E.
+or codec validation occurs during upload. Phase 0E applies these after upload.
 
 From a project, choose **Upload Footage**, select one or more videos, then upload.
 Each file receives its own result. Files transfer sequentially in the browser,
@@ -286,3 +285,65 @@ and the existing small reference video for HTTP transport checks only (not AI or
 decoder-quality evaluation). They clean their own fixtures, cover quota races,
 retries, rollback, unsafe paths, same-name uploads, filesystem persistence, and
 safe HTTP errors. No large new media fixture or runtime upload belongs in Git.
+
+## Phase 0E technical media intelligence
+
+Apply `0004_phase_0e_technical.sql` with `npm.cmd run db:migrate`. It adds
+`artifacts`, `media_metadata`, `temporal_segments`, and `representative_frames`,
+and extends media, jobs, and analysis runs with technical provenance. Previous
+migrations stay unchanged. Start `npm.cmd run start:worker` after a build, then
+use **Start technical processing** on a project's Footage row. The inspection
+page displays measured metadata and one representative frame per segment.
+
+The baseline input profile is SDR H.264 in an MP4/MOV/M4V container, with AAC
+audio or no audio. FFmpeg normalizes video to H.264/yuv420p/square pixels at
+30 fps, without upscaling and with a 1920-pixel maximum long edge. Present AAC
+audio is aligned to the source video's origin and normalized to 48 kHz stereo.
+Unsupported streams, missing or corrupt originals, invalid timing, duration
+limits, and tool failures produce bounded retries followed by a Failed state.
+The original is read-only throughout processing.
+
+**Timing model.** Original video frame timestamps are preserved as integer PTS
+values plus the source rational timebase. The working video has integer frame
+indices at 30/1 fps, beginning at frame zero. A JSONL map pairs each working
+frame with its source PTS, including duplicated source frames when VFR is
+normalized. Application millisecond labels round `frame * 1000 / 30` to the
+nearest integer, with half ties away from zero. Decimal ffprobe seconds are
+converted to integer milliseconds with the same rounding rule. Segments use
+`[start_frame, end_frame)`; start is included, end is excluded. Stored segment
+`start_ms` and `end_ms` are display labels derived from those frame boundaries.
+The final end label equals the working frame count converted to milliseconds.
+Use frame indices and the map for future frame-accurate edits, not the rounded
+millisecond labels alone.
+
+**Segmentation.** FFmpeg scene scores propose technical cut boundaries. Candidates
+closer than 15 frames are coalesced. Every interval is additionally divided at
+300 working frames (10 seconds) or less; a continuous talking-head shot therefore
+still yields bounded intervals. Segments cover the working video without gaps or
+overlap. One JPEG is extracted at the midpoint frame of each interval. These are
+technical navigation aids, not semantic scene or quality judgments.
+
+**Jobs and cache.** The `technical_media` job is claimed with PostgreSQL
+`FOR UPDATE SKIP LOCKED`, a 30-second lease, 5-second heartbeat, and at most
+three attempts. Expired leases can be reclaimed; a stale worker cannot publish
+after its lease is lost. Publication of metadata, segments, frames, run status,
+asset status, and job status is one database transaction. The cache key hashes
+the original SHA-256, processor version, relevant settings, and FFmpeg/ffprobe
+versions. An unchanged successfully analyzed asset retains its single result
+set. A changed processor version, settings, or tool version needs a new job and
+cache key. Runtime working files live under `MEDIA_ROOT/working`, outside Git.
+
+Run `npm.cmd run test:technical` for ffprobe, failure-path, timestamp,
+segmentation, representative-frame, and job-lease tests. Run `npm.cmd run check`,
+`npm.cmd run build`, `npm.cmd run db:verify`, and the Phase 0A–0D suites for
+regression coverage.
+
+**Home-machine baseline (reference-video.mp4, 2026-10-03).** Source duration
+47,833 ms; 360 × 360; H.264 High; average frame rate 8604/287 (29.979 fps);
+AAC audio present; source timing classified VFR. The 30 fps working video has
+1,435 frames and a 47,833 ms rounded end label. Processing took 3,203 ms,
+produced 27 segments and 27 JPEGs, and used 3,112,904 bytes for working video,
+timing map, and JPEG artifacts. Three representative JPEGs at 533, 22,300,
+and 46,833 ms were byte-identical to independent extraction of those frames
+from the working video; each timestamp lay within its segment. Phase 0E uses
+zero OpenAI API calls.

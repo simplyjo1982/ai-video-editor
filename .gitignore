@@ -41,6 +41,17 @@ temporary-media/
 # Upload API route directories contain source code, not runtime uploads.
 !/apps/web/app/api/projects/*/uploads/
 !/apps/web/app/api/projects/*/uploads/**
+!/apps/web/app/api/projects/*/media/
+!/apps/web/app/api/projects/*/media/*/
+!/apps/web/app/api/projects/*/media/*/technical/
+!/apps/web/app/api/projects/*/media/*/technical/**
+!/apps/web/app/api/projects/*/media/*/frames/
+!/apps/web/app/api/projects/*/media/*/frames/*/
+!/apps/web/app/api/projects/*/media/*/frames/*/**
+!/apps/web/app/projects/*/media/
+!/apps/web/app/projects/*/media/*/
+!/apps/web/app/projects/*/media/*/technical/
+!/apps/web/app/projects/*/media/*/technical/**
 
 # Logs
 logs/

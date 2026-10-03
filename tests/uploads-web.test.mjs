@@ -47,7 +47,7 @@ test('upload HTTP flow: multiple files, per-file failures, resume, collision, pe
     for(const asset of assets){assert.deepEqual(await readFile(join(root,'originals',asset.storage_path)),video);assert.equal(asset.duration_ms,null);}
     for(let refresh=0;refresh<2;refresh++){
       const page=await (await globalThis.fetch(`${base}/projects/${project.id}`)).text();
-      assert.ok(page.includes('reference.mp4') && page.includes('uploaded'));
+      assert.ok(page.includes('reference.mp4') && page.includes('Uploaded'));
       assert.ok(!page.includes(root) && !page.includes('DATABASE_URL'));
     }
     // Missing-session errors must not leak an absolute storage path.
